@@ -242,6 +242,7 @@ fastify.register(async fastifyInstance => {
 });
 
 // Start the Fastify server
+/*
 fastify.listen({ port: PORT }, err => {
   if (err) {
     console.error("Error starting server:", err);
@@ -249,3 +250,14 @@ fastify.listen({ port: PORT }, err => {
   }
   console.log(`[Server] Listening on port ${PORT}`);
 });
+*/
+
+// Start Fastify Server updated for Render
+fastify.listen({ port: PORT, host: '0.0.0.0' }, err => {
+  if (err) {
+    console.error("Error starting server:", err);
+    process.exit(1);
+  }
+  console.log(`[Server] Listening on port ${PORT}`);
+});
+
