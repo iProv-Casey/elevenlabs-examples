@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import fastifyFormBody from "@fastify/formbody";
 import fastifyWs from "@fastify/websocket";
 
+// Load environment variables from .env file
 dotenv.config();
 
 const { ELEVENLABS_AGENT_ID, ELEVENLABS_API_KEY } = process.env;
@@ -27,23 +28,25 @@ fastify.all("/twilio/inbound_call", async (request, reply) => {
   const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
       <Connect>
-        <Stream url="wss://${request.headers.host}/media-stream?phone=+15017498368&client_id=FIT" />
+        <Stream url="wss://${request.headers.host}/media-stream" />
       </Connect>
     </Response>`;
-
   reply.type("text/xml").send(twimlResponse);
 });
 
 async function getSignedUrl() {
   try {
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`,
-      {
-        method: "GET",
-        headers: { "xi-api-key": ELEVENLABS_API_KEY },
-      }
-    );
-    if (!response.ok) throw new Error(`Failed to get signed URL: ${response.statusText}`);
+    const response = await fetch(`https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`, {
+      method: "GET",
+      headers: {
+        "xi-api-key": ELEVENLABS_API_KEY,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get signed URL: ${response.statusText}`);
+    }
+
     const data = await response.json();
     return data.signed_url;
   } catch (error) {
@@ -56,18 +59,16 @@ fastify.register(async fastifyInstance => {
   fastifyInstance.get("/media-stream", { websocket: true }, (ws, req) => {
     console.info("[Server] Twilio connected to media stream");
 
-    const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
-    const phone = parsedUrl.searchParams.get("phone");
-    const clientId = parsedUrl.searchParams.get("client_id");
-
-    console.log(`[DEBUG] Extracted query from req.url — phone=${phone}, clientId=${clientId}`);
-    ws.metadata = { phone, clientId };
-
     let streamSid = null;
     let callSid = null;
     let elevenLabsWs = null;
 
-    ws.on("error", console.error);
+    // ✅ Extract query params immediately
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const phone = url.searchParams.get("phone");
+    const clientId = url.searchParams.get("client_id");
+
+    console.log(`[DEBUG] Extracted query from req.url – phone=${phone}, clientId=${clientId}`);
 
     const setupElevenLabs = async () => {
       try {
@@ -76,24 +77,20 @@ fastify.register(async fastifyInstance => {
 
         elevenLabsWs.on("open", () => {
           console.log("[ElevenLabs] Connected to Conversational AI");
-
-          const phone = ws.metadata?.phone;
-          const clientId = ws.metadata?.clientId;
-
           console.log(`[DEBUG] Injecting custom_parameters: phone=${phone}, client_id=${clientId}`);
 
           const initialConfig = {
             type: "conversation_initiation_client_data",
             custom_parameters: {
               phone: phone || "unknown",
-              client_id: clientId || "unknown"
+              client_id: clientId || "unknown",
             },
             conversation_config_override: {
               agent: {
                 prompt: {
                   prompt: "You're Gary from the phone store. If you see phone and client ID, confirm them."
                 },
-                first_message: `Hi! Let's test. Phone: ${phone}, Client ID: ${clientId}`
+                first_message: `Hi! Let's test. Phone: ${phone}, Client ID: ${clientId}`,
               }
             }
           };
@@ -111,22 +108,32 @@ fastify.register(async fastifyInstance => {
         elevenLabsWs.on("message", data => {
           try {
             const message = JSON.parse(data);
-            const payload = message.audio?.chunk || message.audio_event?.audio_base_64;
             switch (message.type) {
               case "conversation_initiation_metadata":
                 console.log("[ElevenLabs] Received initiation metadata");
                 break;
               case "audio":
-                if (streamSid && payload) {
-                  ws.send(JSON.stringify({ event: "media", streamSid, media: { payload } }));
+                const payload = message.audio?.chunk || message.audio_event?.audio_base_64;
+                if (payload && streamSid) {
+                  const audioData = {
+                    event: "media",
+                    streamSid,
+                    media: { payload },
+                  };
+                  ws.send(JSON.stringify(audioData));
                 }
                 break;
               case "interruption":
-                if (streamSid) ws.send(JSON.stringify({ event: "clear", streamSid }));
+                if (streamSid) {
+                  ws.send(JSON.stringify({ event: "clear", streamSid }));
+                }
                 break;
               case "ping":
                 if (message.ping_event?.event_id) {
-                  elevenLabsWs.send(JSON.stringify({ type: "pong", event_id: message.ping_event.event_id }));
+                  elevenLabsWs.send(JSON.stringify({
+                    type: "pong",
+                    event_id: message.ping_event.event_id
+                  }));
                 }
                 break;
               case "agent_response":
@@ -143,8 +150,13 @@ fastify.register(async fastifyInstance => {
           }
         });
 
-        elevenLabsWs.on("error", error => console.error("[ElevenLabs] WebSocket error:", error));
-        elevenLabsWs.on("close", () => console.log("[ElevenLabs] Disconnected"));
+        elevenLabsWs.on("error", error => {
+          console.error("[ElevenLabs] WebSocket error:", error);
+        });
+
+        elevenLabsWs.on("close", () => {
+          console.log("[ElevenLabs] Disconnected");
+        });
       } catch (error) {
         console.error("[ElevenLabs] Setup error:", error);
       }
@@ -158,6 +170,7 @@ fastify.register(async fastifyInstance => {
         if (msg.event !== "media") {
           console.log(`[Twilio] Received event: ${msg.event}`);
         }
+
         switch (msg.event) {
           case "start":
             streamSid = msg.start.streamSid;
@@ -166,7 +179,10 @@ fastify.register(async fastifyInstance => {
             break;
           case "media":
             if (elevenLabsWs?.readyState === WebSocket.OPEN) {
-              elevenLabsWs.send(JSON.stringify({ user_audio_chunk: Buffer.from(msg.media.payload, "base64").toString("base64") }));
+              const audioMessage = {
+                user_audio_chunk: Buffer.from(msg.media.payload, "base64").toString("base64"),
+              };
+              elevenLabsWs.send(JSON.stringify(audioMessage));
             }
             break;
           case "stop":
@@ -189,6 +205,8 @@ fastify.register(async fastifyInstance => {
         elevenLabsWs.close();
       }
     });
+
+    ws.on("error", console.error);
   });
 });
 
@@ -199,5 +217,6 @@ fastify.listen({ port: PORT, host: "0.0.0.0" }, err => {
   }
   console.log(`[Server] Listening on port ${PORT}`);
 });
+
 
 
