@@ -176,6 +176,8 @@ fastifyInstance.get("/outbound-media-stream", { websocket: true }, (ws, req) => 
         };
 
         console.log("[ElevenLabs] Sending initial config with prompt:", initialConfig.conversation_config_override.agent.prompt.prompt);
+        console.log("[InitialConfig FULL PAYLOAD]", JSON.stringify(initialConfig, null, 2));
+
         elevenLabsWs.send(JSON.stringify(initialConfig));
       });
 
