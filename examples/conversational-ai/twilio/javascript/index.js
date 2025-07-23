@@ -81,96 +81,116 @@ fastify.register(async fastifyInstance => {
     // Handle WebSocket errors
     ws.on("error", console.error);
 
-    // Set up ElevenLabs connection
-    const setupElevenLabs = async () => {
-      try {
-        const signedUrl = await getSignedUrl();
-        elevenLabsWs = new WebSocket(signedUrl);
+   // Set up ElevenLabs connection
+const setupElevenLabs = async () => {
+  try {
+    const signedUrl = await getSignedUrl();
+    elevenLabsWs = new WebSocket(signedUrl);
 
-        elevenLabsWs.on("open", () => {
-          console.log("[ElevenLabs] Connected to Conversational AI");
-        });
+    elevenLabsWs.on("open", () => {
+      console.log("[ElevenLabs] Connected to Conversational AI");
 
-        elevenLabsWs.on("message", data => {
-          try {
-            const message = JSON.parse(data);
+      // ✅ Extract query parameters from the WebSocket URL
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const phone = url.searchParams.get("phone");
+      const clientId = url.searchParams.get("client_id");
 
-            switch (message.type) {
-              case "conversation_initiation_metadata":
-                console.log("[ElevenLabs] Received initiation metadata");
-                break;
+      console.log(`[DEBUG] Injecting custom_parameters: phone=${phone}, client_id=${clientId}`);
 
-              case "audio":
-                if (streamSid) {
-                  if (message.audio?.chunk) {
-                    const audioData = {
-                      event: "media",
-                      streamSid,
-                      media: {
-                        payload: message.audio.chunk,
-                      },
-                    };
-                    ws.send(JSON.stringify(audioData));
-                  } else if (message.audio_event?.audio_base_64) {
-                    const audioData = {
-                      event: "media",
-                      streamSid,
-                      media: {
-                        payload: message.audio_event.audio_base_64,
-                      },
-                    };
-                    ws.send(JSON.stringify(audioData));
-                  }
-                } else {
-                  console.log(
-                    "[ElevenLabs] Received audio but no StreamSid yet"
-                  );
-                }
-                break;
-
-              case "interruption":
-                if (streamSid) {
-                  ws.send(
-                    JSON.stringify({
-                      event: "clear",
-                      streamSid,
-                    })
-                  );
-                }
-                break;
-
-              case "ping":
-                if (message.ping_event?.event_id) {
-                  elevenLabsWs.send(
-                    JSON.stringify({
-                      type: "pong",
-                      event_id: message.ping_event.event_id,
-                    })
-                  );
-                }
-                break;
-
-              case "agent_response":
-                console.log(
-                  `[Twilio] Agent response: ${message.agent_response_event?.agent_response}`
-                );
-                break;
-
-              case "user_transcript":
-                console.log(
-                  `[Twilio] User transcript: ${message.user_transcription_event?.user_transcript}`
-                );
-                break;
-
-              default:
-                console.log(
-                  `[ElevenLabs] Unhandled message type: ${message.type}`
-                );
-            }
-          } catch (error) {
-            console.error("[ElevenLabs] Error processing message:", error);
+      const initialConfig = {
+        type: "conversation_initiation_client_data",
+        custom_parameters: {
+          phone: phone || "unknown",
+          client_id: clientId || "unknown"
+        },
+        conversation_config_override: {
+          agent: {
+            prompt: {
+              prompt: "You're Gary from the phone store. If you see phone and client ID, confirm them."
+            },
+            first_message: `Hi! Let's test. Phone: ${phone}, Client ID: ${clientId}`
           }
-        });
+        }
+      };
+
+      console.log("[InitialConfig Payload]", JSON.stringify(initialConfig, null, 2));
+
+      try {
+        elevenLabsWs.send(JSON.stringify(initialConfig));
+        console.log("[ElevenLabs] Sent initialConfig ✅");
+      } catch (err) {
+        console.error("[ERROR] Failed to send initialConfig:", err);
+      }
+    });
+
+    elevenLabsWs.on("message", data => {
+      try {
+        const message = JSON.parse(data);
+
+        switch (message.type) {
+          case "conversation_initiation_metadata":
+            console.log("[ElevenLabs] Received initiation metadata");
+            break;
+
+          case "audio":
+            if (streamSid) {
+              const payload = message.audio?.chunk || message.audio_event?.audio_base_64;
+              if (payload) {
+                const audioData = {
+                  event: "media",
+                  streamSid,
+                  media: { payload }
+                };
+                ws.send(JSON.stringify(audioData));
+              }
+            } else {
+              console.log("[ElevenLabs] Received audio but no StreamSid yet");
+            }
+            break;
+
+          case "interruption":
+            if (streamSid) {
+              ws.send(JSON.stringify({ event: "clear", streamSid }));
+            }
+            break;
+
+          case "ping":
+            if (message.ping_event?.event_id) {
+              elevenLabsWs.send({
+                type: "pong",
+                event_id: message.ping_event.event_id
+              });
+            }
+            break;
+
+          case "agent_response":
+            console.log(`[Twilio] Agent response: ${message.agent_response_event?.agent_response}`);
+            break;
+
+          case "user_transcript":
+            console.log(`[Twilio] User transcript: ${message.user_transcription_event?.user_transcript}`);
+            break;
+
+          default:
+            console.log(`[ElevenLabs] Unhandled message type: ${message.type}`);
+        }
+      } catch (error) {
+        console.error("[ElevenLabs] Error processing message:", error);
+      }
+    });
+
+    elevenLabsWs.on("error", error => {
+      console.error("[ElevenLabs] WebSocket error:", error);
+    });
+
+    elevenLabsWs.on("close", () => {
+      console.log("[ElevenLabs] Disconnected");
+    });
+  } catch (error) {
+    console.error("[ElevenLabs] Setup error:", error);
+  }
+};
+
 
         elevenLabsWs.on("error", error => {
           console.error("[ElevenLabs] WebSocket error:", error);
