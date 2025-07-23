@@ -324,7 +324,7 @@ fastify.register(async fastifyInstance => {
           elevenLabsWs = new WebSocket(signedUrl);
 
           elevenLabsWs.on("open", () => {
-            console.log("[ElevenLabs] Connected to Conversational AI");
+            console.log("[ElevenLabs] Connected to Conversational AI you fuck");
 
             // Send initial configuration with prompt and first message
             const initialConfig = {
