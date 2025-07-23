@@ -152,7 +152,7 @@ fastifyInstance.get("/outbound-media-stream", { websocket: true }, (ws, req) => 
       elevenLabsWs = new WebSocket(signedUrl);
 
       elevenLabsWs.on("open", () => {
-        console.log("[ElevenLabs] Connected to Conversational AI");
+        console.log("[ElevenLabs] Connected to Conversational AI, you wanker!");
 
         // ✅ Inject custom parameters into the conversation
         const initialConfig = {
