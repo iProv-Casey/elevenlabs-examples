@@ -192,18 +192,6 @@ const setupElevenLabs = async () => {
 };
 
 
-        elevenLabsWs.on("error", error => {
-          console.error("[ElevenLabs] WebSocket error:", error);
-        });
-
-        elevenLabsWs.on("close", () => {
-          console.log("[ElevenLabs] Disconnected");
-        });
-      } catch (error) {
-        console.error("[ElevenLabs] Setup error:", error);
-      }
-    };
-
     // Set up ElevenLabs connection
     setupElevenLabs();
 
