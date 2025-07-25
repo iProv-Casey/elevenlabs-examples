@@ -63,7 +63,7 @@ fastify.register(async fastifyInstance => {
     let callSid = null;
     let elevenLabsWs = null;
 
-    // ✅ Extract query params immediately
+    // Extract query params immediately
     const url = new URL(req.url, `http://${req.headers.host}`);
     const phone = url.searchParams.get("phone");
     const clientId = url.searchParams.get("client_id");
@@ -85,21 +85,21 @@ fastify.register(async fastifyInstance => {
               phone: phone || "unknown",
               client_id: clientId || "unknown",
             },
-            conversation_config_override: {
-              agent: {
-                prompt: {
-                  prompt: "You're Gary from the phone store. If you see phone and client ID, confirm them."
-                },
-                first_message: `Hi! Let's test. Phone: ${phone}, Client ID: ${clientId}`,
-              }
-            }
+            //conversation_config_override: {
+              //agent: {
+                //prompt: {
+                  //prompt: "You're Gary from the phone store. If you see phone and client ID, confirm them."
+                //},
+                //first_message: `Hi! Let's test. Phone: ${phone}, Client ID: ${clientId}`,
+              //}
+            //}
           };
 
           console.log("[InitialConfig Payload]", JSON.stringify(initialConfig, null, 2));
 
           try {
             elevenLabsWs.send(JSON.stringify(initialConfig));
-            console.log("[ElevenLabs] Sent initialConfig ✅");
+            console.log("[ElevenLabs] Sent initialConfig");
           } catch (err) {
             console.error("[ERROR] Failed to send initialConfig:", err);
           }
